@@ -9,20 +9,38 @@ The client records such ping-pong round trip time.
 
 ## Prepare
 
-The following operations are tested on Ubuntu 18.04.4 with DPDK 19.11.1.
+The following operations are tested on Fedora 33 with DPDK 20.11
 
 ### Setup DPDK
 
+With Ubuntu (from zylan29's work):
+
 ```shell
 sudo apt-get install make gcc libnuma-dev pkgconf python
-make config T=x86_64-native-linuxapp-gcc
-make
+```
 
-echo "export RTE_SDK=/root/dpdk-18.05" >> ~/.profile
+With Fedora 33:
+
+```shell
+sudo dnf install -y make gcc pkgconf python3 dpdk
+```
+
+and then edit Makefile to point to /usr/include/dpdk for include files and add -L/usr/lib64/dpdk to the link options,
+or if you want to custom-build your DPDK from source, do something more like the above.
+
+```shell
+echo "export RTE_SDK=/root/dpdk-20.11" >> ~/.profile
+```
+
+for all distros:
+
+```shell
 echo "export RTE_TARGET=build" >> ~/.profile
 . ~/.profile
-
+make config T=x86_64-native-linuxapp-gcc
+make
 ```
+
 
 ### Setup huge memory pages
 
@@ -30,33 +48,71 @@ echo "export RTE_TARGET=build" >> ~/.profile
 
 ``` shell
 vim /etc/default/grub
-
 # Append "default_hugepagesz=1GB hugepagesz=1G hugepages=8" to the end of line GRUB_CMDLINE_LINUX_DEFAULT.
+```
 
+For Debian/Ubuntu:
+```
 update-grub
 ```
 
-2. Mount huge tlb by default.
+For Fedora 33:
+```
+grub2-mkconfig
+```
 
-```shell
-vim /etc/fstab
+and reboot.
 
-# Append "nodev /mnt/huge hugetlbfs defaults 0 0" to the end of file.
+For all distros:
+
+Check that this worked by looking at **/proc/cmdline** (kernel boot params) and **/dev/meminfo** for hugepage info
+
+```
+echo "nodev /mnt/huge hugetlbfs defaults 0 0" >> /etc/fstab
+mount -v /mnt/huge
 ```
 
 ### Install user space NIC driver
-```shell
+
+For older machines that do not support VT-d virtualization:
+
+```
 modprobe uio
 cd $RTE_SDK/build/kmod
 insmod igb_uio.ko
 ```
 
+For Fedora 33 with Intel x86_64 modern CPUs like Skylake that support VT-d virtualization:
+
+add the options "intel_iommu=on iommu=pt" to the grub command line in the same way you did above for hugepages, then reboot.
+BEFORE YOU DO THIS, make sure that you have enabled VT-d virtualization in the BIOS (under CPU options).  For example,
+
+```
+cat /proc/cpuinfo |grep -E "vmx|svm"
+...
+vmx flags	: vnmi preemption_timer posted_intr invvpid ept_x_only ept_ad ept_1gb flexpriority apicv tsc_offset vtpr mtf vapic ept vpid unrestricted_guest vapic_reg vid ple shadow_vmcs pml ept_mode_based_exec
+```
+
 ### Bind NIC to userspace driver
 
-```shell
+For Ubuntu:
+
+```
 cd $RTE_SDK/usertools
 ./dpdk-devbind.py -s
 ./dpdk-devbind.py -b igb_uio $YOUR_NIC
+```
+
+For Fedora 33 on Intel x86_64 architecture, 
+use these commands to enable the example interface "yourinterface" for DPDK on PCI slot ID xx:yy.z
+
+```
+ifdown yourinterface
+dpdk-devbind.py --status
+dpdk-devbind.py -u xx:yy.z
+modprobe -v vfio-pci
+dpdk-devbind.py --bind=vfio-pci xx:yy.z
+dpdk-devbind.py --status
 ```
 
 ## Build
@@ -67,23 +123,17 @@ Since the ARP protocol is not implemented, the MAC and IP addresses of the clien
 Modify the follwing variables.
 ```c
 /* the client side */
-static struct ether_addr client_ether_addr =
+static struct rte_ether_addr client_ether_addr =
     {{0x00, 0x0c, 0x29, 0xd5, 0xac, 0xc9}};
-static uint32_t client_ip_addr = IPv4(172, 16, 166, 131);
+static uint32_t client_ip_addr = RTE_IPV4(172, 16, 166, 131);
 
 /* the server side */
-static struct ether_addr server_ether_addr =
+static struct rte_ether_addr server_ether_addr =
     {{0x00, 0x0c, 0x29, 0xd1, 0xdc, 0x50}};
-static uint32_t server_ip_addr = IPv4(172, 16, 166, 132);
+static uint32_t server_ip_addr = RTE_IPV4(172, 16, 166, 132);
 ```
 
-2. Build
-
-```shell
-export RTE_SDK=/path/to/dpdk-19.05/
-export RTE_TARGET=build
-make
-```
+and then run **make** again.
 
 The valid parameters are: 
 `-p` to specify the id of  which port to use, 0 by default (both sides), 
