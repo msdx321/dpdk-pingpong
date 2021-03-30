@@ -114,40 +114,27 @@ dpdk-devbind.py --bind=vfio-pci xx:yy.z
 dpdk-devbind.py --status
 ```
 
-## Build
-
-1. Modify the MAC and IP addresses
-
-Since the ARP protocol is not implemented, the MAC and IP addresses of the client and server are hardcoded.
-Modify the follwing variables.
-```c
-/* the client side */
-static struct rte_ether_addr client_ether_addr =
-    {{0x00, 0x0c, 0x29, 0xd5, 0xac, 0xc9}};
-static uint32_t client_ip_addr = RTE_IPV4(172, 16, 166, 131);
-
-/* the server side */
-static struct rte_ether_addr server_ether_addr =
-    {{0x00, 0x0c, 0x29, 0xd1, 0xdc, 0x50}};
-static uint32_t server_ip_addr = RTE_IPV4(172, 16, 166, 132);
-```
-
-and then run **make** again.
-
-The valid parameters are: 
-`-p` to specify the id of  which port to use, 0 by default (both sides), 
-`-n` to customize how many ping-pong rounds, 100 by default (client side), 
-`-s` to enable server mode (server side).
-
 ## Run
+The valid parameters come after the "--" in the command line options, and are: 
+
+- `-p` to specify the id of  which port to use, 0 by default (both sides), 
+- `-n` to customize how many ping-pong rounds, 100 by default (client side), 
+- `-s` to enable server mode (server side).
+- `--client_mac` to specify the MAC address used by the client side
+- `--client_ip` to specify the IP address used by the client side
+- `--server_mac` to specify the MAC address used by the server side
+- `--server_ip` to specify the IP address used by the server side
+
 1. Make sure that NIC is properly binded to the DPDK-compible driver and huge memory page is configured on both client and server.
 
-2. On the server side
+2. On the server side, ignoring the mac and IP addresses, this is how to run it:
+
 ```shell
 sudo ./build/pingpong -l 1,2 -- -p 0 -s
 ```
 
-3. On the client side
+3. On the client side, ignoring the mac and IP addresses, this is how to run it:
+
 ```shell
 sudo ./build/pingpong -l 1,2 -- -p 0 -n 200
 ```
