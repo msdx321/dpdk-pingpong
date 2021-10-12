@@ -130,32 +130,23 @@ static const char short_options[] =
 #define OPT_SERVER_IP 1053
 
 static const struct option longopts[] = {
-	{
-		"client_mac",
-		REQUIRED_ARGUMENT,
-		NULL,
-		OPT_CLIENT_MAC
-	},
-	{
-		"server_mac",
-		REQUIRED_ARGUMENT,
-		NULL,
-		OPT_SERVER_MAC
-	},
-	{
-		"client_ip",
-		REQUIRED_ARGUMENT,
-		NULL,
-		OPT_CLIENT_IP
-	},
-	{
-		"server_ip",
-		REQUIRED_ARGUMENT,
-		NULL,
-		OPT_SERVER_IP
-	},
-	{ 0, 0, 0, 0 }
-};
+    {"client_mac",
+     REQUIRED_ARGUMENT,
+     NULL,
+     OPT_CLIENT_MAC},
+    {"server_mac",
+     REQUIRED_ARGUMENT,
+     NULL,
+     OPT_SERVER_MAC},
+    {"client_ip",
+     REQUIRED_ARGUMENT,
+     NULL,
+     OPT_CLIENT_IP},
+    {"server_ip",
+     REQUIRED_ARGUMENT,
+     NULL,
+     OPT_SERVER_IP},
+    {0, 0, 0, 0}};
 
 #define IP_DEFTTL 64 /* from RFC 1340. */
 #define IP_VERSION 0x40
@@ -178,9 +169,9 @@ static inline uint32_t
 reverse_ip_addr(const uint32_t ip_addr)
 {
     return RTE_IPV4((uint8_t)(ip_addr & 0xff),
-                (uint8_t)((ip_addr >> 8) & 0xff),
-                (uint8_t)((ip_addr >> 16) & 0xff),
-                (uint8_t)((ip_addr >> 24) & 0xff));
+                    (uint8_t)((ip_addr >> 8) & 0xff),
+                    (uint8_t)((ip_addr >> 16) & 0xff),
+                    (uint8_t)((ip_addr >> 24) & 0xff));
 }
 
 static void
@@ -217,7 +208,7 @@ pingpong_parse_args(int argc, char **argv)
     int count = -1;
     int j;
     unsigned int octets[6] = {255};
-    unsigned char * abyt;
+    unsigned char *abyt;
     unsigned int ip_bytes[4] = {255};
 
     while ((opt = getopt_long(argc, argv, short_options, longopts, &arg_index)) != EOF)
@@ -237,63 +228,69 @@ pingpong_parse_args(int argc, char **argv)
             server_mode = true;
             break;
 
-	case OPT_CLIENT_IP:
-	    count = sscanf(optarg, "%3d.%3d.%3d.%3d",
-			    &ip_bytes[0],
-			    &ip_bytes[1],
-			    &ip_bytes[2],
-			    &ip_bytes[3]);
-	    if (count != 4) {
-		    printf("ERROR: IP address %s invalid", optarg);
-		    return -1;
-	    }
-	    client_ip_addr = RTE_IPV4(ip_bytes[0],ip_bytes[1],ip_bytes[2],ip_bytes[3]);
-	    break;
+        case OPT_CLIENT_IP:
+            count = sscanf(optarg, "%3d.%3d.%3d.%3d",
+                           &ip_bytes[0],
+                           &ip_bytes[1],
+                           &ip_bytes[2],
+                           &ip_bytes[3]);
+            if (count != 4)
+            {
+                printf("ERROR: IP address %s invalid", optarg);
+                return -1;
+            }
+            client_ip_addr = RTE_IPV4(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]);
+            break;
 
-	case OPT_SERVER_IP:
-	    count = sscanf(optarg, "%3d.%3d.%3d.%3d",
-			    &ip_bytes[0],
-			    &ip_bytes[1],
-			    &ip_bytes[2],
-			    &ip_bytes[3]);
-	    if (count != 4) {
-		    printf("ERROR: IP address %s invalid", optarg);
-		    return -1;
-	    }
-	    server_ip_addr = RTE_IPV4(ip_bytes[0],ip_bytes[1],ip_bytes[2],ip_bytes[3]);
-	    break;
+        case OPT_SERVER_IP:
+            count = sscanf(optarg, "%3d.%3d.%3d.%3d",
+                           &ip_bytes[0],
+                           &ip_bytes[1],
+                           &ip_bytes[2],
+                           &ip_bytes[3]);
+            if (count != 4)
+            {
+                printf("ERROR: IP address %s invalid", optarg);
+                return -1;
+            }
+            server_ip_addr = RTE_IPV4(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]);
+            break;
 
-	case OPT_CLIENT_MAC:
-	    abyt = client_ether_addr.addr_bytes;
-            count=sscanf(optarg, "%02x:%02x:%02x:%02x:%02x:%02x", 
-			    &octets[0],
-			    &octets[1],
-			    &octets[2],
-			    &octets[3],
-			    &octets[4],
-			    &octets[5]);
-	    if (count != 6) {
-		    printf("ERROR: mac address %s invalid", optarg);
-		    return -1;
-	    }
-	    for (j=0; j<6; j++) abyt[j] = (uint8_t )octets[j];
-	    break;
+        case OPT_CLIENT_MAC:
+            abyt = client_ether_addr.addr_bytes;
+            count = sscanf(optarg, "%02x:%02x:%02x:%02x:%02x:%02x",
+                           &octets[0],
+                           &octets[1],
+                           &octets[2],
+                           &octets[3],
+                           &octets[4],
+                           &octets[5]);
+            if (count != 6)
+            {
+                printf("ERROR: mac address %s invalid", optarg);
+                return -1;
+            }
+            for (j = 0; j < 6; j++)
+                abyt[j] = (uint8_t)octets[j];
+            break;
 
-	case OPT_SERVER_MAC:
-	    abyt = server_ether_addr.addr_bytes;
-            count=sscanf(optarg, "%02x:%02x:%02x:%02x:%02x:%02x", 
-			    &octets[0],
-			    &octets[1],
-			    &octets[2],
-			    &octets[3],
-			    &octets[4],
-			    &octets[5]);
-	    if (count != 6) {
-		    printf("ERROR: mac address %s invalid", optarg);
-		    return -1;
-	    }
-	    for (j=0; j<6; j++) abyt[j] = (uint8_t )octets[j];
-	    break;
+        case OPT_SERVER_MAC:
+            abyt = server_ether_addr.addr_bytes;
+            count = sscanf(optarg, "%02x:%02x:%02x:%02x:%02x:%02x",
+                           &octets[0],
+                           &octets[1],
+                           &octets[2],
+                           &octets[3],
+                           &octets[4],
+                           &octets[5]);
+            if (count != 6)
+            {
+                printf("ERROR: mac address %s invalid", optarg);
+                return -1;
+            }
+            for (j = 0; j < 6; j++)
+                abyt[j] = (uint8_t)octets[j];
+            break;
 
         default:
             pingpong_usage(prgname);
@@ -562,8 +559,8 @@ int main(int argc, char **argv)
     unsigned int nb_mbufs;
     unsigned int nb_lcores;
     unsigned int lcore_id;
-    unsigned char * macb = NULL;  /* mac address byte pointer */
-    unsigned char * ipb = NULL;  /* ip address byte pointer */
+    unsigned char *macb = NULL; /* mac address byte pointer */
+    unsigned char *ipb = NULL;  /* ip address byte pointer */
 
     /* init EAL */
     ret = rte_eal_init(argc, argv);
@@ -577,7 +574,7 @@ int main(int argc, char **argv)
     ret = rte_log_set_level(RTE_LOGTYPE_PINGPONG, PINGPONG_LOG_LEVEL);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Set log level to %u failed\n", PINGPONG_LOG_LEVEL);
-    
+
     nb_lcores = rte_lcore_count();
     if (nb_lcores < 2)
         rte_exit(EXIT_FAILURE, "Number of CPU cores should be no less than 2.");
@@ -596,18 +593,17 @@ int main(int argc, char **argv)
     if (portid > nb_ports - 1)
         rte_exit(EXIT_FAILURE, "Invalid port id %u, port id should be in range [0, %u]\n", portid, nb_ports - 1);
 
+    macb = (unsigned char *)&client_ether_addr.addr_bytes[0];
+    ipb = (unsigned char *)&client_ip_addr;
+    rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "client mac and ip addr are %02x:%02x:%02x:%02x:%02x:%02x and %3d.%3d.%3d.%3d\n",
+            macb[0], macb[1], macb[2], macb[3], macb[4], macb[5],
+            ipb[3], ipb[2], ipb[1], ipb[0]);
 
-    macb = (unsigned char * )&client_ether_addr.addr_bytes[0];
-    ipb = (unsigned char * )&client_ip_addr;
-    rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "client mac and ip addr are %02x:%02x:%02x:%02x:%02x:%02x and %3d.%3d.%3d.%3d\n", 
-		    		macb[0], macb[1], macb[2], macb[3], macb[4], macb[5],
-				ipb[3], ipb[2], ipb[1], ipb[0]);
-
-    macb = (unsigned char * )&server_ether_addr.addr_bytes[0];
-    ipb = (unsigned char * )&server_ip_addr;
-    rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "server mac and ip addr are %02x:%02x:%02x:%02x:%02x:%02x and %3d.%3d.%3d.%3d\n", 
-		    		macb[0], macb[1], macb[2], macb[3], macb[4], macb[5],
-				ipb[3], ipb[2], ipb[1], ipb[0]);
+    macb = (unsigned char *)&server_ether_addr.addr_bytes[0];
+    ipb = (unsigned char *)&server_ip_addr;
+    rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "server mac and ip addr are %02x:%02x:%02x:%02x:%02x:%02x and %3d.%3d.%3d.%3d\n",
+            macb[0], macb[1], macb[2], macb[3], macb[4], macb[5],
+            ipb[3], ipb[2], ipb[1], ipb[0]);
 
     force_quit = false;
     signal(SIGINT, signal_handler);
