@@ -18,13 +18,13 @@ uint32_t PINGPONG_LOG_LEVEL = RTE_LOG_DEBUG;
 
 /* the client side */
 static struct rte_ether_addr client_ether_addr =
-    {{0x52, 0x54, 0x00, 0xf9, 0xfc, 0x4d}};
-static uint32_t client_ip_addr = RTE_IPV4(172, 16, 166, 131);
+    {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
+static uint32_t client_ip_addr = RTE_IPV4(172, 16, 166, 1);
 
 /* the server side */
 static struct rte_ether_addr server_ether_addr =
-    {{0x52, 0x54, 0x00, 0x22, 0xb0, 0x7c}};
-static uint32_t server_ip_addr = RTE_IPV4(172, 16, 166, 132);
+    {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
+static uint32_t server_ip_addr = RTE_IPV4(172, 16, 166, 2);
 
 static uint16_t cfg_udp_src = 1000;
 static uint16_t cfg_udp_dst = 1001;
@@ -52,6 +52,8 @@ static uint16_t portid = 0;
 static uint64_t nb_pkts = 100;
 /* server mode */
 static bool server_mode = false;
+/* heavy mode */
+static bool heavy_mode = false;
 
 static struct rte_eth_dev_tx_buffer *tx_buffer;
 
@@ -121,6 +123,7 @@ static const char short_options[] =
     "p:" /* portmask */
     "n:" /* number of packets */
     "s"  /* server mode */
+    "h"  /* heavy task */
     ;
 
 #define REQUIRED_ARGUMENT 1
@@ -192,6 +195,7 @@ pingpong_usage(const char *prgname)
     puts("\t-p PORTID: port to configure\n");
     puts("\t\t\t\t\t-n PACKETS: number of packets\n");
     puts("\t\t\t\t\t-s: enable server mode\n");
+    puts("\t\t\t\t\t-h: server will take longer to process each packet\n");
     puts("\t\t\t\t\t--client_mac: MAC address\n");
     puts("\t\t\t\t\t--client_ip: IP address\n");
     puts("\t\t\t\t\t--server_mac: MAC address\n");
@@ -226,6 +230,10 @@ pingpong_parse_args(int argc, char **argv)
 
         case 's':
             server_mode = true;
+            break;
+
+        case 'h':
+            heavy_mode = true;
             break;
 
         case OPT_CLIENT_IP:
@@ -367,7 +375,10 @@ contruct_ping_packet(void)
     /* Initialize UDP header. */
     udp_hdr = (struct rte_udp_hdr *)(ip_hdr + 1);
     udp_hdr->src_port = rte_cpu_to_be_16(cfg_udp_src);
-    udp_hdr->dst_port = rte_cpu_to_be_16(cfg_udp_dst);
+    if (heavy_mode)
+        udp_hdr->dst_port = rte_cpu_to_be_16(cfg_udp_dst + 1);
+    else
+        udp_hdr->dst_port = rte_cpu_to_be_16(cfg_udp_dst);
     udp_hdr->dgram_cksum = 0; /* No UDP checksum. */
     udp_hdr->dgram_len = rte_cpu_to_be_16(pkt_size -
                                           sizeof(*eth_hdr) -
@@ -474,6 +485,13 @@ ping_main_loop(void)
     print_port_statistics();
 }
 
+int fib(int n)
+{
+    if (n <= 1)
+        return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
 /* main pong loop */
 static void
 pong_main_loop(void)
@@ -485,6 +503,8 @@ pong_main_loop(void)
     struct rte_ether_hdr *eth_hdr;
     struct rte_vlan_hdr *vlan_hdr;
     struct rte_ipv4_hdr *ip_hdr;
+    struct rte_udp_hdr *udp_hdr;
+    struct rte_ether_addr temp_addr;
     uint16_t eth_type;
     int l2_len;
 
@@ -522,11 +542,19 @@ pong_main_loop(void)
                     {
                         port_statistics.rx += 1;
                         /* do pong */
-                        rte_ether_addr_copy(&server_ether_addr, &eth_hdr->s_addr);
-                        rte_ether_addr_copy(&client_ether_addr, &eth_hdr->d_addr);
+                        rte_ether_addr_copy(&eth_hdr->s_addr, &temp_addr);
+                        rte_ether_addr_copy(&eth_hdr->d_addr, &eth_hdr->s_addr);
+                        rte_ether_addr_copy(&temp_addr, &eth_hdr->d_addr);
 
                         ip_hdr->src_addr = rte_cpu_to_be_32(server_ip_addr);
                         ip_hdr->dst_addr = rte_cpu_to_be_32(client_ip_addr);
+
+                        udp_hdr = (struct rte_udp_hdr *)(ip_hdr + 1);
+                        if (udp_hdr->dst_port == rte_cpu_to_be_16(cfg_udp_dst + 1))
+                        {
+                            //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "It's a heavy packet!!!\n");
+                            fib(35);
+                        }
 
                         nb_tx = rte_eth_tx_burst(portid, 0, &m, 1);
                         if (nb_tx)
