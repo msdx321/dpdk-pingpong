@@ -58,6 +58,9 @@ static bool heavy_mode = false;
 static struct rte_eth_dev_tx_buffer *tx_buffer;
 
 static struct rte_eth_conf port_conf = {
+    .intr_conf = {
+        .rxq = 1,
+    },
     .rxmode = {
         .split_hdr_size = 0,
     },
@@ -507,15 +510,18 @@ pong_main_loop(void)
     struct rte_ether_addr temp_addr;
     uint16_t eth_type;
     int l2_len;
+    uint64_t last_worked_cycles;
 
     lcore_id = rte_lcore_id();
 
     rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "entering pong loop on lcore %u\n", lcore_id);
     rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "waiting ping packets\n");
 
+    last_worked_cycles = rte_rdtsc();
     /* wait for pong */
     while (!force_quit)
     {
+
         nb_rx = rte_eth_rx_burst(portid, 0, pkts_burst, MAX_PKT_BURST);
         if (nb_rx)
         {
@@ -562,22 +568,17 @@ pong_main_loop(void)
                     }
                 }
             }
+            last_worked_cycles = rte_rdtsc();
+        }
+
+        if (rte_rdtsc() - last_worked_cycles > 2000 * 1000 * 1000)
+        {
+            //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "2000M cycles no packet, go sleep now\n");
+            struct rte_epoll_event event[1];
+            rte_epoll_wait(RTE_EPOLL_PER_THREAD, event, 1, -1);
+            //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "some packets come in, wake up now\n");
         }
     }
-}
-
-static int
-ping_launch_one_lcore(__attribute__((unused)) void *dummy)
-{
-    ping_main_loop();
-    return 0;
-}
-
-static int
-pong_launch_one_lcore(__attribute__((unused)) void *dummy)
-{
-    pong_main_loop();
-    return 0;
 }
 
 int main(int argc, char **argv)
@@ -585,8 +586,6 @@ int main(int argc, char **argv)
     int ret;
     uint16_t nb_ports;
     unsigned int nb_mbufs;
-    unsigned int nb_lcores;
-    unsigned int lcore_id;
     unsigned char *macb = NULL; /* mac address byte pointer */
     unsigned char *ipb = NULL;  /* ip address byte pointer */
 
@@ -602,10 +601,6 @@ int main(int argc, char **argv)
     ret = rte_log_set_level(RTE_LOGTYPE_PINGPONG, PINGPONG_LOG_LEVEL);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Set log level to %u failed\n", PINGPONG_LOG_LEVEL);
-
-    nb_lcores = rte_lcore_count();
-    if (nb_lcores < 2)
-        rte_exit(EXIT_FAILURE, "Number of CPU cores should be no less than 2.");
 
     nb_ports = rte_eth_dev_count_avail();
     if (nb_ports == 0)
@@ -683,6 +678,16 @@ int main(int argc, char **argv)
         rte_exit(EXIT_FAILURE, "rte_eth_rx_queue_setup:err=%d, port=%u\n",
                  ret, portid);
 
+    ret = rte_eth_dev_rx_intr_ctl_q(0, 0, RTE_EPOLL_PER_THREAD, RTE_INTR_EVENT_ADD, (void *)((uintptr_t)(0 << CHAR_BIT | 0)));
+    if (ret < 0)
+        rte_exit(EXIT_FAILURE,
+                 "rx_intr_ctl: %d\n", ret);
+
+    ret = rte_eth_dev_rx_intr_enable(0, 0);
+    if (ret < 0)
+        rte_exit(EXIT_FAILURE,
+                 "rx_intr_enable: %d\n", ret);
+
     /* init one TX queue on each port */
     fflush(stdout);
     txq_conf = dev_info.default_txconf;
@@ -723,21 +728,14 @@ int main(int argc, char **argv)
 
     rte_log(RTE_LOG_DEBUG, RTE_LOGTYPE_PINGPONG, "Initilize port %u done.\n", portid);
 
-    lcore_id = rte_get_next_lcore(0, true, false);
-
     ret = 0;
     if (server_mode)
     {
-        rte_eal_remote_launch(pong_launch_one_lcore, NULL, lcore_id);
+        pong_main_loop();
     }
     else
     {
-        rte_eal_remote_launch(ping_launch_one_lcore, NULL, lcore_id);
-    }
-
-    if (rte_eal_wait_lcore(lcore_id) < 0)
-    {
-        ret = -1;
+        ping_main_loop();
     }
 
     rte_eth_dev_stop(portid);
