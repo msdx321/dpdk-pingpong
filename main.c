@@ -19,15 +19,15 @@ uint32_t PINGPONG_LOG_LEVEL = RTE_LOG_DEBUG;
 /* the client side */
 static struct rte_ether_addr client_ether_addr =
     {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
-static uint32_t client_ip_addr = RTE_IPV4(172, 16, 166, 1);
+static uint32_t client_ip_addr = RTE_IPV4(0, 0, 0, 0);
 
 /* the server side */
 static struct rte_ether_addr server_ether_addr =
     {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
-static uint32_t server_ip_addr = RTE_IPV4(172, 16, 166, 2);
+static uint32_t server_ip_addr = RTE_IPV4(0, 0, 0, 0);
 
-static uint16_t cfg_udp_src = 1000;
-static uint16_t cfg_udp_dst = 1001;
+static uint16_t cfg_udp_src = 10000;
+static uint16_t cfg_udp_dst = 10001;
 
 #define MAX_PKT_BURST 32
 #define MEMPOOL_CACHE_SIZE 128
@@ -54,12 +54,14 @@ static uint64_t nb_pkts = 100;
 static bool server_mode = false;
 /* heavy mode */
 static bool heavy_mode = false;
+/* interrupt mode */
+static bool intr_mode = false;
 
 static struct rte_eth_dev_tx_buffer *tx_buffer;
 
 static struct rte_eth_conf port_conf = {
     .intr_conf = {
-        .rxq = 1,
+        .rxq = 0,
     },
     .rxmode = {
         .split_hdr_size = 0,
@@ -127,6 +129,7 @@ static const char short_options[] =
     "n:" /* number of packets */
     "s"  /* server mode */
     "h"  /* heavy task */
+    "i"  /* use interrupt */
     ;
 
 #define REQUIRED_ARGUMENT 1
@@ -237,6 +240,10 @@ pingpong_parse_args(int argc, char **argv)
 
         case 'h':
             heavy_mode = true;
+            break;
+
+        case 'i':
+            intr_mode = true;
             break;
 
         case OPT_CLIENT_IP:
@@ -488,7 +495,7 @@ ping_main_loop(void)
     print_port_statistics();
 }
 
-int fib(int n)
+static inline int fib(int n)
 {
     if (n <= 1)
         return n;
@@ -508,6 +515,8 @@ pong_main_loop(void)
     struct rte_ipv4_hdr *ip_hdr;
     struct rte_udp_hdr *udp_hdr;
     struct rte_ether_addr temp_addr;
+    rte_be16_t temp_port;
+    uint32_t temp_ip;
     uint16_t eth_type;
     int l2_len;
     uint64_t last_worked_cycles;
@@ -527,7 +536,7 @@ pong_main_loop(void)
         {
             for (i = 0; i < nb_rx; i++)
             {
-
+                //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "recevied %d packets\n", nb_rx);
                 m = pkts_burst[i];
 
                 eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr *);
@@ -541,6 +550,11 @@ pong_main_loop(void)
                 }
                 if (eth_type == RTE_ETHER_TYPE_IPV4)
                 {
+		    /*
+                    rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "d_addr %02X:%02X:%02X:%02X:%02X:%02X\n", eth_hdr->d_addr.addr_bytes[0], eth_hdr->d_addr.addr_bytes[1],
+                            eth_hdr->d_addr.addr_bytes[2], eth_hdr->d_addr.addr_bytes[3],
+                            eth_hdr->d_addr.addr_bytes[4], eth_hdr->d_addr.addr_bytes[5]);
+		    */
                     ip_hdr = (struct rte_ipv4_hdr *)((char *)eth_hdr + l2_len);
                     /* compare mac & ip, confirm it is a ping packet */
                     if (rte_is_same_ether_addr(&eth_hdr->d_addr, &server_ether_addr) &&
@@ -552,16 +566,23 @@ pong_main_loop(void)
                         rte_ether_addr_copy(&eth_hdr->d_addr, &eth_hdr->s_addr);
                         rte_ether_addr_copy(&temp_addr, &eth_hdr->d_addr);
 
+			temp_ip = reverse_ip_addr(ip_hdr->src_addr);
                         ip_hdr->src_addr = rte_cpu_to_be_32(server_ip_addr);
-                        ip_hdr->dst_addr = rte_cpu_to_be_32(client_ip_addr);
+                        ip_hdr->dst_addr = rte_cpu_to_be_32(temp_ip);
 
                         udp_hdr = (struct rte_udp_hdr *)(ip_hdr + 1);
-                        if (udp_hdr->dst_port == rte_cpu_to_be_16(cfg_udp_dst + 1))
+			//printf("udp port: %d\n", rte_be_to_cpu_16(udp_hdr->dst_port));
+                        if (udp_hdr->dst_port >= rte_cpu_to_be_16(cfg_udp_dst + 20000))
                         {
                             //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "It's a heavy packet!!!\n");
                             fib(35);
                         }
 
+			temp_port = udp_hdr->dst_port;
+			udp_hdr->dst_port = udp_hdr->src_port;
+			udp_hdr->src_port = temp_port;
+
+                        //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "responding\n");
                         nb_tx = rte_eth_tx_burst(portid, 0, &m, 1);
                         if (nb_tx)
                             port_statistics.tx += nb_tx;
@@ -571,7 +592,7 @@ pong_main_loop(void)
             last_worked_cycles = rte_rdtsc();
         }
 
-        if (rte_rdtsc() - last_worked_cycles > 2000 * 1000 * 1000)
+        if (rte_rdtsc() - last_worked_cycles > 2000 * 1000 * 1000 && intr_mode)
         {
             //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "2000M cycles no packet, go sleep now\n");
             struct rte_epoll_event event[1];
@@ -653,6 +674,11 @@ int main(int argc, char **argv)
         local_port_conf.txmode.offloads |=
             DEV_TX_OFFLOAD_MBUF_FAST_FREE;
 
+    if (intr_mode)
+    {
+        local_port_conf.intr_conf.rxq = 1;
+    }
+
     ret = rte_eth_dev_configure(portid, 1, 1, &local_port_conf);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Cannot configure device: err=%d, port=%u\n",
@@ -678,15 +704,18 @@ int main(int argc, char **argv)
         rte_exit(EXIT_FAILURE, "rte_eth_rx_queue_setup:err=%d, port=%u\n",
                  ret, portid);
 
-    ret = rte_eth_dev_rx_intr_ctl_q(0, 0, RTE_EPOLL_PER_THREAD, RTE_INTR_EVENT_ADD, (void *)((uintptr_t)(0 << CHAR_BIT | 0)));
-    if (ret < 0)
-        rte_exit(EXIT_FAILURE,
-                 "rx_intr_ctl: %d\n", ret);
+    if (intr_mode)
+    {
+        ret = rte_eth_dev_rx_intr_ctl_q(0, 0, RTE_EPOLL_PER_THREAD, RTE_INTR_EVENT_ADD, (void *)((uintptr_t)(0 << CHAR_BIT | 0)));
+        if (ret < 0)
+            rte_exit(EXIT_FAILURE,
+                     "rx_intr_ctl: %d\n", ret);
 
-    ret = rte_eth_dev_rx_intr_enable(0, 0);
-    if (ret < 0)
-        rte_exit(EXIT_FAILURE,
-                 "rx_intr_enable: %d\n", ret);
+        ret = rte_eth_dev_rx_intr_enable(0, 0);
+        if (ret < 0)
+            rte_exit(EXIT_FAILURE,
+                     "rx_intr_enable: %d\n", ret);
+    }
 
     /* init one TX queue on each port */
     fflush(stdout);
