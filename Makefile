@@ -18,7 +18,7 @@ shared: build/$(APP)-shared
 static: build/$(APP)-static
 	ln -sf $(APP)-static build/$(APP)
 
-CFLAGS += -O3 $(shell pkg-config --cflags libdpdk)
+CFLAGS += -O3 $(shell pkg-config --cflags libdpdk) -Wno-address-of-packed-member
 LDFLAGS_SHARED = $(shell pkg-config --libs libdpdk)
 LDFLAGS_STATIC = -Wl,-Bstatic $(shell pkg-config --static --libs libdpdk)
 
