@@ -12,6 +12,8 @@
 #include <rte_mbuf.h>
 #include <rte_malloc.h>
 
+#include "cpu.h"
+
 #define APP "pingpong"
 
 uint32_t PINGPONG_LOG_LEVEL = RTE_LOG_DEBUG;
@@ -502,6 +504,16 @@ static inline int fib(int n)
     return fib(n - 1) + fib(n - 2);
 }
 
+static inline void spin_cycles(uint64_t cycles)
+{
+    uint64_t start_cycles;
+
+    start_cycles = rte_rdtsc();
+
+    while (rte_rdtsc() < start_cycles + cycles)
+        ;
+}
+
 /* main pong loop */
 static void
 pong_main_loop(void)
@@ -520,12 +532,14 @@ pong_main_loop(void)
     uint16_t eth_type;
     int l2_len;
     uint64_t last_worked_cycles;
+    uint64_t cpu_frequency;
 
     lcore_id = rte_lcore_id();
 
     rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "entering pong loop on lcore %u\n", lcore_id);
     rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "waiting ping packets\n");
 
+    cpu_frequency = get_cpu_frequency();
     last_worked_cycles = rte_rdtsc();
     /* wait for pong */
     while (!force_quit)
@@ -550,11 +564,11 @@ pong_main_loop(void)
                 }
                 if (eth_type == RTE_ETHER_TYPE_IPV4)
                 {
-		    /*
+                    /*
                     rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "d_addr %02X:%02X:%02X:%02X:%02X:%02X\n", eth_hdr->d_addr.addr_bytes[0], eth_hdr->d_addr.addr_bytes[1],
                             eth_hdr->d_addr.addr_bytes[2], eth_hdr->d_addr.addr_bytes[3],
                             eth_hdr->d_addr.addr_bytes[4], eth_hdr->d_addr.addr_bytes[5]);
-		    */
+                    */
                     ip_hdr = (struct rte_ipv4_hdr *)((char *)eth_hdr + l2_len);
                     /* compare mac & ip, confirm it is a ping packet */
                     if (rte_is_same_ether_addr(&eth_hdr->d_addr, &server_ether_addr) &&
@@ -566,21 +580,21 @@ pong_main_loop(void)
                         rte_ether_addr_copy(&eth_hdr->d_addr, &eth_hdr->s_addr);
                         rte_ether_addr_copy(&temp_addr, &eth_hdr->d_addr);
 
-			temp_ip = reverse_ip_addr(ip_hdr->src_addr);
+                        temp_ip = reverse_ip_addr(ip_hdr->src_addr);
                         ip_hdr->src_addr = rte_cpu_to_be_32(server_ip_addr);
                         ip_hdr->dst_addr = rte_cpu_to_be_32(temp_ip);
 
                         udp_hdr = (struct rte_udp_hdr *)(ip_hdr + 1);
-			//printf("udp port: %d\n", rte_be_to_cpu_16(udp_hdr->dst_port));
+                        //printf("udp port: %d\n", rte_be_to_cpu_16(udp_hdr->dst_port));
                         if (udp_hdr->dst_port >= rte_cpu_to_be_16(cfg_udp_dst + 20000))
                         {
                             //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "It's a heavy packet!!!\n");
-                            fib(35);
+                            spin_cycles(5000 * cpu_frequency); // spin 5000us
                         }
 
-			temp_port = udp_hdr->dst_port;
-			udp_hdr->dst_port = udp_hdr->src_port;
-			udp_hdr->src_port = temp_port;
+                        temp_port = udp_hdr->dst_port;
+                        udp_hdr->dst_port = udp_hdr->src_port;
+                        udp_hdr->src_port = temp_port;
 
                         //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "responding\n");
                         nb_tx = rte_eth_tx_burst(portid, 0, &m, 1);
