@@ -9,7 +9,7 @@ SRCS-y := src/main.c src/cpu.c
 
 # Build using pkg-config variables if possible
 $(shell pkg-config --exists libdpdk)
-ifeq ($(.SHELLSTATUS),0)
+ifeq (0,0) # Hack 
 
 all: shared
 .PHONY: shared static
