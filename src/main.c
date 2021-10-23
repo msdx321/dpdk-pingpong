@@ -591,6 +591,10 @@ pong_main_loop(void)
                             //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "It's a heavy packet!!!\n");
                             spin_cycles(5000 * cpu_frequency); // spin 5000us
                         }
+                        else
+                        {
+                            spin_cycles(20 * cpu_frequency);
+                        }
 
                         temp_port = udp_hdr->dst_port;
                         udp_hdr->dst_port = udp_hdr->src_port;
@@ -606,7 +610,7 @@ pong_main_loop(void)
             last_worked_cycles = rte_rdtsc();
         }
 
-        if (rte_rdtsc() - last_worked_cycles > 2000 * 1000 * 1000 && intr_mode)
+        if (intr_mode)
         {
             //rte_log(RTE_LOG_INFO, RTE_LOGTYPE_PINGPONG, "2000M cycles no packet, go sleep now\n");
             struct rte_epoll_event event[1];
